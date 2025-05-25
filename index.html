@@ -1,122 +1,228 @@
-# app.py
-from flask import Flask, render_template, request, jsonify
-import json
-from datetime import datetime
-
-app = Flask(__name__)
-
-# 颜色主题配置（主色+子色）
-COLOR_SCHEMES = {
-    'blue': ('#3B82F6', '#60A5FA'),
-    'green': ('#10B981', '#34D399'),
-    'purple': ('#8B5CF6', '#A78BFA'),
-    'orange': ('#F97316', '#FB923C'),
-    'red': ('#EF4444', '#F87171')
-}
-
-# 模拟数据存储（实际应用建议使用数据库）
-tasks = []
-
-@app.route('/')
-def index():
-    return render_template('index.html', color_schemes=COLOR_SCHEMES)
-
-@app.route('/api/tasks', methods=['GET', 'POST'])
-def manage_tasks():
-    global tasks
-    
-    if request.method == 'POST':
-        data = request.json
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多任务进度跟踪器</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .theme-blue .task-border { border-left-color: #3B82F6; }
+        .theme-green .task-border { border-left-color: #10B981; }
+        .theme-purple .task-border { border-left-color: #8B5CF6; }
+        .theme-orange .task-border { border-left-color: #F97316; }
+        .theme-red .task-border { border-left-color: #EF4444; }
         
-        if data.get('action') == 'add_main_task':
-            # 自动分配颜色主题
-            theme = get_next_theme()
-            new_task = {
-                'id': datetime.now().isoformat(),
-                'name': data.get('name', '新主任务'),
-                'theme': theme,
-                'subtasks': [],
-                'progress': 0,
-                'unit': '单位'
+        .sub-theme-blue .progress-bar { background-color: #60A5FA; }
+        .sub-theme-green .progress-bar { background-color: #34D399; }
+        .sub-theme-purple .progress-bar { background-color: #A78BFA; }
+        .sub-theme-orange .progress-bar { background-color: #FB923C; }
+        .sub-theme-red .progress-bar { background-color: #F87171; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8 text-center">多任务进度管理系统</h1>
+        
+        <div id="task-list" class="space-y-6">
+            <!-- 主任务将动态插入此处 -->
+        </div>
+
+        <button id="add-main-task" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4 block mx-auto">
+            添加新主任务
+        </button>
+    </div>
+
+    <script>
+        const COLOR_SCHEMES = {{ color_schemes|tojson }};
+        let tasks = [];
+
+        // 初始化加载任务
+        loadTasks();
+
+        // 添加主任务
+        document.getElementById('add-main-task').addEventListener('click', async () => {
+            const name = prompt('请输入主任务名称', '新主任务');
+            if (name) {
+                await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'add_main_task', name })
+                });
+                renderTasks();
             }
-            tasks.append(new_task)
+        });
+
+        // 渲染任务列表
+        function renderTasks() {
+            const taskList = document.getElementById('task-list');
+            taskList.innerHTML = '';
             
-        elif data.get('action') == 'add_subtask':
-            # 查找主任务并添加子任务
-            main_task = next((t for t in tasks if t['id'] == data['main_id']), None)
-            if main_task:
-                new_subtask = {
-                    'id': datetime.now().isoformat(),
-                    'name': data.get('subname', '新子任务'),
-                    'current': 0,
-                    'total': 1,
-                    'unit': data.get('unit', '单位'),
-                    'theme': main_task['theme']  # 继承主任务主题
-                }
-                main_task['subtasks'].append(new_subtask)
-                update_progress(main_task)
+            tasks.forEach(mainTask => {
+                const mainDiv = document.createElement('div');
+                mainDiv.className = `bg-white rounded-lg shadow-md p-4 theme-${mainTask.theme}`;
                 
-        elif data.get('action') == 'update_task':
-            # 更新任务状态
-            main_task = next((t for t in tasks if t['id'] == data['main_id']), None)
-            subtask = next((s for s in main_task['subtasks'] if s['id'] == data['subid']), None)
-            if subtask:
-                subtask['current'] = max(0, min(int(data['current']), subtask['total']))
-                subtask['total'] = max(1, int(data['total']))
-                subtask['unit'] = data['unit']
-                subtask['name'] = data['subname']
-                update_progress(main_task)
+                // 主任务头部
+                mainDiv.innerHTML += `
+                    <div class="flex justify-between items-center mb-4 task-border">
+                        <div class="flex items-center">
+                            <input type="text" value="${mainTask.name}" 
+                                class="text-xl font-semibold border-none pl-2" 
+                                onchange="updateTaskName('${mainTask.id}', this)">
+                        </div>
+                        
+                        <div class="flex items-center">
+                            <div class="mr-4">
+                                <span class="text-lg font-medium">进度：${mainTask.progress}%</span>
+                                <br><span class="text-sm text-gray-500">(${mainTask.current}/${mainTask.total} ${mainTask.unit})</span>
+                            </div>
+                            
+                            <button class="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded ml-4"
+                                onclick="deleteTask('${mainTask.id}')">
+                                删除
+                            </button>
+                            
+                            <button class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-2 rounded ml-2"
+                                onclick="addSubtask('${mainTask.id}', '${mainTask.theme}')">
+                                添加子任务
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="h-2 bg-gray-200 rounded-lg mb-4">
+                        <div class="progress-bar h-full bg-${COLOR_SCHEMES[mainTask.theme][0]} 
+                            transition-all" style="width: ${mainTask.progress}%"></div>
+                    </div>
+                    
+                    <div class="subtask-list" data-main-id="${mainTask.id}">
+                        ${mainTask.subtasks.map(subtask => renderSubtask(subtask, mainTask.theme)).join('')}
+                    </div>
+                `;
                 
-        elif data.get('action') == 'delete_task':
-            # 删除任务
-            global tasks
-            tasks = [t for t in tasks if t['id'] != data['id']]
-            # 级联删除子任务
-            tasks = [{**t, 'subtasks': [s for s in t['subtasks'] if s['id'] != data['id']]} for t in tasks]
-            
-        save_data()
-        return jsonify(success=True)
-    
-    return jsonify(tasks=tasks)
+                taskList.appendChild(mainDiv);
+            });
+        }
 
-def update_progress(main_task):
-    """更新主任务进度"""
-    subtasks = main_task['subtasks']
-    total_current = sum(s['current'] for s in subtasks)
-    total_total = sum(s['total'] for s in subtasks)
-    
-    main_task['progress'] = int((total_current / total_total) * 100) if total_total != 0 else 0
-    main_task['unit'] = get_common_unit(subtasks)
+        // 渲染子任务
+        function renderSubtask(subtask, theme) {
+            return `
+                <div class="flex justify-between items-center bg-gray-50 rounded-lg p-3 mb-2 task-border">
+                    <div class="flex items-center">
+                        <input type="text" value="${subtask.name}" 
+                            class="text-sm pl-2 border-none" 
+                            onchange="updateSubtaskName('${subtask.main_id}', '${subtask.id}', this)">
+                        
+                        <div class="ml-4">
+                            <input type="number" value="${subtask.current}" min="0" 
+                                class="w-12 text-center border rounded" 
+                                onchange="updateSubtaskProgress('${subtask.main_id}', '${subtask.id}', 'current', this)">
+                            
+                            <span class="mx-1">/</span>
+                            
+                            <input type="number" value="${subtask.total}" min="1" 
+                                class="w-12 text-center border rounded" 
+                                onchange="updateSubtaskProgress('${subtask.main_id}', '${subtask.id}', 'total', this)">
+                            
+                            <input type="text" value="${subtask.unit}" 
+                                class="w-16 pl-2 border-none" 
+                                onchange="updateSubtaskUnit('${subtask.main_id}', '${subtask.id}', this)">
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center">
+                        <div class="h-2 w-40 bg-gray-200 rounded-lg">
+                            <div class="progress-bar h-full bg-${COLOR_SCHEMES[theme][1]}" 
+                                style="width: ${(subtask.current / subtask.total * 100).toFixed(1)}%"></div>
+                        </div>
+                        
+                        <button class="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded ml-4"
+                            onclick="deleteSubtask('${subtask.main_id}', '${subtask.id}')">
+                            删除
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
 
-def get_common_unit(subtasks):
-    """获取公共单位"""
-    units = [s['unit'] for s in subtasks if s['unit']]
-    return max(set(units), key=units.count) if units else '单位'
+        // 数据交互函数
+        async function loadTasks() {
+            const response = await fetch('/api/tasks');
+            tasks = await response.json();
+            renderTasks();
+        }
 
-def get_next_theme():
-    """循环获取颜色主题"""
-    global tasks
-    used_themes = [t['theme'] for t in tasks]
-    for theme in COLOR_SCHEMES:
-        if theme not in used_themes:
-            return theme
-    # 循环使用已存在主题
-    return list(COLOR_SCHEMES.keys())[len(tasks) % len(COLOR_SCHEMES)]
+        async function updateTaskName(mainId, element) {
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'update_task', 
+                    main_id: mainId, 
+                    name: element.value 
+                })
+            });
+        }
 
-def save_data():
-    """保存数据到文件（实际应用建议使用数据库）"""
-    with open('tasks.json', 'w') as f:
-        json.dump(tasks, f, indent=2)
+        async function addSubtask(mainId, theme) {
+            const name = prompt('请输入子任务名称', '新子任务');
+            if (name) {
+                await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        action: 'add_subtask', 
+                        main_id: mainId, 
+                        subname: name,
+                        theme: theme
+                    })
+                });
+                renderTasks();
+            }
+        }
 
-def load_data():
-    """从文件加载数据"""
-    global tasks
-    try:
-        with open('tasks.json', 'r') as f:
-            tasks = json.load(f)
-    except FileNotFoundError:
-        tasks = []
+        async function updateSubtaskProgress(mainId, subId, field, element) {
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'update_task', 
+                    main_id: mainId, 
+                    subid: subId, 
+                    [field]: element.value 
+                })
+            });
+        }
 
-if __name__ == '__main__':
-    load_data()
-    app.run(debug=True)
+        async function updateSubtaskUnit(mainId, subId, element) {
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'update_task', 
+                    main_id: mainId, 
+                    subid: subId, 
+                    unit: element.value 
+                })
+            });
+        }
+
+        async function deleteTask(taskId) {
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_task', id: taskId })
+            });
+            renderTasks();
+        }
+
+        async function deleteSubtask(mainId, subId) {
+            await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_task', id: subId })
+            });
+            renderTasks();
+        }
+    </script>
+</body>
+</html>
