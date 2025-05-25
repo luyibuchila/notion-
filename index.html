@@ -1,295 +1,122 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>任务进度跟踪器</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#3B82F6',
-                        secondary: '#10B981',
-                        neutral: '#6B7280',
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    },
-                }
-            }
-        }
-    </script>
-    <style type="text/tailwindcss">
-        @layer utilities {
-            .content-auto {
-                content-visibility: auto;
-            }
-            .progress-container {
-                @apply h-4 bg-gray-200 rounded-full overflow-hidden;
-            }
-            .progress-bar {
-                @apply h-full transition-all duration-500 ease-out rounded-full;
-            }
-            .task-card {
-                @apply bg-white rounded-lg shadow-md p-4 mb-4 border-l-4;
-            }
-            .input-field {
-                @apply border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all;
-            }
-            .btn {
-                @apply px-4 py-2 rounded-md transition-all duration-300 font-medium;
-            }
-            .btn-primary {
-                @apply bg-primary text-white hover:bg-primary/90 active:bg-primary/80;
-            }
-            .btn-secondary {
-                @apply bg-secondary text-white hover:bg-secondary/90 active:bg-secondary/80;
-            }
-            .btn-danger {
-                @apply bg-red-500 text-white hover:bg-red-600 active:bg-red-700;
-            }
-            .btn-outline {
-                @apply border border-gray-300 hover:bg-gray-100 active:bg-gray-200;
-            }
-        }
-    </style>
-</head>
-<body class="bg-gray-50 min-h-screen">
-    <div class="container mx-auto px-4 py-8 max-w-4xl">
-        <header class="mb-8 text-center">
-            <h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold text-gray-800 mb-2">任务进度跟踪器</h1>
-            <p class="text-gray-600 max-w-2xl mx-auto">管理你的主任务和子任务，自动计算整体进度</p>
-        </header>
+# app.py
+from flask import Flask, render_template, request, jsonify
+import json
+from datetime import datetime
 
-        <main>
-            <div class="task-card border-l-primary">
-                <div class="flex flex-col md:flex-row md:items-center justify-between mb-3">
-                    <div class="mb-3 md:mb-0">
-                        <div class="flex items-center">
-                            <h2 class="text-xl font-semibold text-gray-800 mr-2">主任务</h2>
-                            <input type="text" id="mainTaskName" placeholder="输入主任务名称" 
-                                class="input-field text-lg w-full md:w-auto">
-                        </div>
-                        <div class="flex items-center mt-1">
-                            <span id="mainTaskProgressText" class="text-sm font-medium text-gray-600 mr-2">0%</span>
-                            <span id="mainTaskUnit" class="text-sm text-gray-500">(0/0 单位)</span>
-                        </div>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button id="addSubTaskBtn" class="btn btn-primary flex items-center">
-                            <i class="fa fa-plus mr-1"></i> 添加子任务
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="progress-container mb-2">
-                    <div id="mainProgressBar" class="progress-bar bg-primary" style="width: 0%"></div>
-                </div>
-                
-                <div id="subTasksContainer" class="mt-6 space-y-4">
-                    <!-- 子任务将动态添加到这里 -->
-                </div>
-            </div>
-        </main>
+app = Flask(__name__)
 
-        <footer class="mt-12 text-center text-gray-500 text-sm">
-            <p>© 2025 任务进度跟踪器 | 高效管理你的项目</p>
-        </footer>
-    </div>
+# 颜色主题配置（主色+子色）
+COLOR_SCHEMES = {
+    'blue': ('#3B82F6', '#60A5FA'),
+    'green': ('#10B981', '#34D399'),
+    'purple': ('#8B5CF6', '#A78BFA'),
+    'orange': ('#F97316', '#FB923C'),
+    'red': ('#EF4444', '#F87171')
+}
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const subTasksContainer = document.getElementById('subTasksContainer');
-            const addSubTaskBtn = document.getElementById('addSubTaskBtn');
-            const mainProgressBar = document.getElementById('mainProgressBar');
-            const mainTaskProgressText = document.getElementById('mainTaskProgressText');
-            const mainTaskUnit = document.getElementById('mainTaskUnit');
-            const mainTaskName = document.getElementById('mainTaskName');
-            
-            // 默认主任务名称
-            mainTaskName.value = '我的主任务';
-            
-            // 子任务计数器
-            let subTaskCounter = 0;
-            
-            // 添加子任务按钮点击事件
-            addSubTaskBtn.addEventListener('click', () => addSubTask());
-            
-            // 添加初始子任务
-            addSubTask();
-            addSubTask();
-            
-            // 添加子任务函数
-            function addSubTask() {
-                subTaskCounter++;
-                
-                const subTask = document.createElement('div');
-                subTask.className = 'task-card border-l-secondary relative';
-                subTask.innerHTML = `
-                    <div class="flex flex-col md:flex-row md:items-center justify-between mb-2">
-                        <div class="flex flex-col md:flex-row md:items-center mb-2 md:mb-0 w-full">
-                            <div class="flex items-center mb-2 md:mb-0 md:mr-4">
-                                <span class="text-sm font-medium text-gray-500 mr-2">子任务 ${subTaskCounter}:</span>
-                                <input type="text" placeholder="子任务名称" 
-                                    class="input-field subTaskName w-full md:w-auto">
-                            </div>
-                            <div class="flex items-center space-x-2">
-                                <input type="number" placeholder="已完成" min="0" 
-                                    class="input-field subTaskCurrent w-20">
-                                <span class="text-gray-500">/</span>
-                                <input type="number" placeholder="总数" min="1" 
-                                    class="input-field subTaskTotal w-20">
-                                <input type="text" placeholder="单位" 
-                                    class="input-field subTaskUnit w-24">
-                            </div>
-                        </div>
-                        <button class="deleteSubTaskBtn btn btn-danger absolute top-4 right-4 opacity-70 hover:opacity-100 transition-opacity">
-                            <i class="fa fa-trash"></i>
-                        </button>
-                    </div>
-                    
-                    <div class="flex items-center mb-1">
-                        <span class="subTaskProgressText text-sm font-medium text-gray-600 mr-2">0%</span>
-                        <span class="subTaskUnitDisplay text-sm text-gray-500">(0/0 单位)</span>
-                    </div>
-                    
-                    <div class="progress-container">
-                        <div class="subTaskProgressBar progress-bar bg-secondary" style="width: 0%"></div>
-                    </div>
-                `;
-                
-                subTasksContainer.appendChild(subTask);
-                
-                // 为新添加的子任务输入框添加事件监听器
-                const currentInput = subTask.querySelector('.subTaskCurrent');
-                const totalInput = subTask.querySelector('.subTaskTotal');
-                const unitInput = subTask.querySelector('.subTaskUnit');
-                const progressBar = subTask.querySelector('.subTaskProgressBar');
-                const progressText = subTask.querySelector('.subTaskProgressText');
-                const unitDisplay = subTask.querySelector('.subTaskUnitDisplay');
-                const deleteBtn = subTask.querySelector('.deleteSubTaskBtn');
-                
-                // 初始化输入框事件
-                [currentInput, totalInput, unitInput].forEach(input => {
-                    input.addEventListener('input', updateSubTaskProgress);
-                });
-                
-                // 删除子任务
-                deleteBtn.addEventListener('click', () => {
-                    subTask.classList.add('opacity-0');
-                    subTask.style.maxHeight = subTask.offsetHeight + 'px';
-                    
-                    setTimeout(() => {
-                        subTask.style.transition = 'all 0.3s ease';
-                        subTask.style.maxHeight = '0';
-                        subTask.style.margin = '0';
-                        subTask.style.padding = '0';
-                        subTask.style.overflow = 'hidden';
-                        
-                        setTimeout(() => {
-                            subTask.remove();
-                            updateMainTaskProgress();
-                        }, 300);
-                    }, 50);
-                });
-                
-                // 聚焦到名称输入框
-                setTimeout(() => {
-                    const nameInput = subTask.querySelector('.subTaskName');
-                    nameInput.focus();
-                }, 100);
-            }
-            
-            // 更新子任务进度
-            function updateSubTaskProgress(e) {
-                const input = e.target;
-                const subTask = input.closest('.task-card');
-                const currentInput = subTask.querySelector('.subTaskCurrent');
-                const totalInput = subTask.querySelector('.subTaskTotal');
-                const unitInput = subTask.querySelector('.subTaskUnit');
-                const progressBar = subTask.querySelector('.subTaskProgressBar');
-                const progressText = subTask.querySelector('.subTaskProgressText');
-                const unitDisplay = subTask.querySelector('.subTaskUnitDisplay');
-                
-                // 确保输入有效性
-                if (input === currentInput || input === totalInput) {
-                    let current = parseInt(currentInput.value) || 0;
-                    let total = parseInt(totalInput.value) || 0;
-                    
-                    // 防止总数小于1
-                    if (total < 1) {
-                        totalInput.value = 1;
-                        total = 1;
-                    }
-                    
-                    // 防止当前值大于总数
-                    if (current > total) {
-                        currentInput.value = total;
-                        current = total;
-                    }
-                    
-                    // 计算进度百分比
-                    const percentage = (current / total) * 100;
-                    
-                    // 更新进度条和文本
-                    progressBar.style.width = `${percentage}%`;
-                    progressText.textContent = `${Math.round(percentage)}%`;
-                    unitDisplay.textContent = `(${current}/${total} ${unitInput.value || '单位'})`;
-                } else if (input === unitInput) {
-                    // 更新单位显示
-                    const current = parseInt(currentInput.value) || 0;
-                    const total = parseInt(totalInput.value) || 0;
-                    unitDisplay.textContent = `(${current}/${total} ${unitInput.value || '单位'})`;
-                }
-                
-                // 更新主任务进度
-                updateMainTaskProgress();
-            }
-            
-            // 更新主任务进度
-            function updateMainTaskProgress() {
-                const subTasks = document.querySelectorAll('.task-card:not(.border-l-primary)');
-                let totalCurrent = 0;
-                let totalMax = 0;
-                let units = new Set();
-                
-                subTasks.forEach(task => {
-                    const current = parseInt(task.querySelector('.subTaskCurrent').value) || 0;
-                    const total = parseInt(task.querySelector('.subTaskTotal').value) || 0;
-                    const unit = task.querySelector('.subTaskUnit').value || '单位';
-                    
-                    totalCurrent += current;
-                    totalMax += total;
-                    units.add(unit);
-                });
-                
-                // 计算主任务进度百分比
-                const mainPercentage = totalMax > 0 ? (totalCurrent / totalMax) * 100 : 0;
-                
-                // 更新主任务进度条和文本
-                mainProgressBar.style.width = `${mainPercentage}%`;
-                mainTaskProgressText.textContent = `${Math.round(mainPercentage)}%`;
-                
-                // 确定主任务单位显示
-                let unitDisplay = '单位';
-                if (units.size === 1) {
-                    unitDisplay = units.values().next().value;
-                }
-                
-                mainTaskUnit.textContent = `(${totalCurrent}/${totalMax} ${unitDisplay})`;
-            }
-            
-            // 主任务名称更改事件
-            mainTaskName.addEventListener('input', function() {
-                if (this.value.trim() === '') {
-                    this.value = '我的主任务';
-                }
-            });
-        });
-    </script>
-</body>
-</html>
+# 模拟数据存储（实际应用建议使用数据库）
+tasks = []
+
+@app.route('/')
+def index():
+    return render_template('index.html', color_schemes=COLOR_SCHEMES)
+
+@app.route('/api/tasks', methods=['GET', 'POST'])
+def manage_tasks():
+    global tasks
     
+    if request.method == 'POST':
+        data = request.json
+        
+        if data.get('action') == 'add_main_task':
+            # 自动分配颜色主题
+            theme = get_next_theme()
+            new_task = {
+                'id': datetime.now().isoformat(),
+                'name': data.get('name', '新主任务'),
+                'theme': theme,
+                'subtasks': [],
+                'progress': 0,
+                'unit': '单位'
+            }
+            tasks.append(new_task)
+            
+        elif data.get('action') == 'add_subtask':
+            # 查找主任务并添加子任务
+            main_task = next((t for t in tasks if t['id'] == data['main_id']), None)
+            if main_task:
+                new_subtask = {
+                    'id': datetime.now().isoformat(),
+                    'name': data.get('subname', '新子任务'),
+                    'current': 0,
+                    'total': 1,
+                    'unit': data.get('unit', '单位'),
+                    'theme': main_task['theme']  # 继承主任务主题
+                }
+                main_task['subtasks'].append(new_subtask)
+                update_progress(main_task)
+                
+        elif data.get('action') == 'update_task':
+            # 更新任务状态
+            main_task = next((t for t in tasks if t['id'] == data['main_id']), None)
+            subtask = next((s for s in main_task['subtasks'] if s['id'] == data['subid']), None)
+            if subtask:
+                subtask['current'] = max(0, min(int(data['current']), subtask['total']))
+                subtask['total'] = max(1, int(data['total']))
+                subtask['unit'] = data['unit']
+                subtask['name'] = data['subname']
+                update_progress(main_task)
+                
+        elif data.get('action') == 'delete_task':
+            # 删除任务
+            global tasks
+            tasks = [t for t in tasks if t['id'] != data['id']]
+            # 级联删除子任务
+            tasks = [{**t, 'subtasks': [s for s in t['subtasks'] if s['id'] != data['id']]} for t in tasks]
+            
+        save_data()
+        return jsonify(success=True)
+    
+    return jsonify(tasks=tasks)
+
+def update_progress(main_task):
+    """更新主任务进度"""
+    subtasks = main_task['subtasks']
+    total_current = sum(s['current'] for s in subtasks)
+    total_total = sum(s['total'] for s in subtasks)
+    
+    main_task['progress'] = int((total_current / total_total) * 100) if total_total != 0 else 0
+    main_task['unit'] = get_common_unit(subtasks)
+
+def get_common_unit(subtasks):
+    """获取公共单位"""
+    units = [s['unit'] for s in subtasks if s['unit']]
+    return max(set(units), key=units.count) if units else '单位'
+
+def get_next_theme():
+    """循环获取颜色主题"""
+    global tasks
+    used_themes = [t['theme'] for t in tasks]
+    for theme in COLOR_SCHEMES:
+        if theme not in used_themes:
+            return theme
+    # 循环使用已存在主题
+    return list(COLOR_SCHEMES.keys())[len(tasks) % len(COLOR_SCHEMES)]
+
+def save_data():
+    """保存数据到文件（实际应用建议使用数据库）"""
+    with open('tasks.json', 'w') as f:
+        json.dump(tasks, f, indent=2)
+
+def load_data():
+    """从文件加载数据"""
+    global tasks
+    try:
+        with open('tasks.json', 'r') as f:
+            tasks = json.load(f)
+    except FileNotFoundError:
+        tasks = []
+
+if __name__ == '__main__':
+    load_data()
+    app.run(debug=True)
